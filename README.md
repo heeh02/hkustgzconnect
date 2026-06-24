@@ -39,7 +39,7 @@ Native client for the HKUST(GZ) campus SSL‑VPN (Sangfor EasyConnect)
 
 | 平台 | 文件 |
 |---|---|
-| macOS (Apple Silicon / Intel) | `hkustgzconnect-*-mac-*.dmg` |
+| macOS (Apple Silicon / Intel) | `hkustgzconnect-*-mac-*.zip`(下方一键脚本最省事;若有 `.dmg` 亦可) |
 | Windows (x64) | `hkustgzconnect-*-win-*.exe` |
 | Android | 🚧 二期(见 [`android/`](android/)) |
 

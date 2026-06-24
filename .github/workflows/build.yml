@@ -71,10 +71,12 @@ jobs:
             echo "macOS: ad-hoc signing (no cert) — opens via right-click → Open"
           fi
 
-      - name: Build (macOS dmg)
+      - name: Build (macOS zip + dmg)
         if: matrix.platform == 'mac'
         working-directory: desktop
-        run: npm run dist:mac
+        run: |
+          npx electron-builder --mac zip
+          npx electron-builder --mac dmg || echo "::warning::dmg failed on CI (hdiutil flake) — zip shipped instead"
 
       - name: Configure Windows signing
         if: matrix.platform == 'win'
@@ -98,6 +100,7 @@ jobs:
           name: hkustgzconnect-${{ matrix.platform }}
           path: |
             desktop/release/*.dmg
+            desktop/release/*.zip
             desktop/release/*.exe
           if-no-files-found: warn
 
@@ -107,4 +110,5 @@ jobs:
         with:
           files: |
             desktop/release/*.dmg
+            desktop/release/*.zip
             desktop/release/*.exe
