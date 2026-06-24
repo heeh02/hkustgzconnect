@@ -43,7 +43,23 @@ Native client for the HKUST(GZ) campus SSL‑VPN (Sangfor EasyConnect)
 | Windows (x64) | `hkustgzconnect-*-win-*.exe` |
 | Android | 🚧 二期(见 [`android/`](android/)) |
 
-> macOS 首次打开若提示"未受信任的开发者",右键 → 打开;或 `xattr -dr com.apple.quarantine /Applications/hkustgzconnect.app`(未签名构建)。
+### 首次打开(重要)
+
+本项目是个人工具,**未做 Apple 公证 / Windows 签名**(需付费证书),所以系统会拦一下。任选其一:
+
+**macOS — 一行命令安装(最省事,自动去隔离):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/heeh02/hkustgzconnect/main/desktop/scripts/install-mac.sh | bash
+```
+**macOS — 或手动:** 把 app 拖进「应用程序」后,**右键点图标 → 打开 → 再点"打开"**(只需一次)。
+若仍提示"已损坏",在终端执行一次:
+```bash
+xattr -dr com.apple.quarantine /Applications/hkustgzconnect.app
+```
+
+**Windows:** 双击 exe 若弹「Windows 已保护你的电脑」→ 点「更多信息」→「仍要运行」。
+
+> 想做到**双击零提示**?需要 Apple 开发者证书($99/年)做公证 + Windows 代码签名证书。仓库 CI 已预留签名/公证位,配好证书 secret 即可自动出"下载即用"的安装包。
 
 ## 使用(桌面)
 
