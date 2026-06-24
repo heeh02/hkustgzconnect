@@ -76,7 +76,7 @@ jobs:
       - name: Build (macOS zip)
         if: matrix.platform == 'mac'
         working-directory: desktop
-        run: npx electron-builder --mac zip
+        run: npx electron-builder --mac zip --arm64 --x64
 
       - name: Configure Windows signing
         if: matrix.platform == 'win'
