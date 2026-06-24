@@ -13,10 +13,13 @@ URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
   | grep -oE "https://[^\"]*mac-$A\.zip" | head -1)
 [ -n "$URL" ] || { echo "✗ no mac-$A.zip in latest release"; exit 1; }
 
-TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+# keep partial downloads in a stable cache so flaky networks can resume (-C -)
+CACHE="$HOME/.cache/hkustgzconnect"; mkdir -p "$CACHE"
+ZIP="$CACHE/$(basename "$URL")"
 echo "↓ $URL"
-curl -fL# "$URL" -o "$TMP/app.zip"
-ditto -x -k "$TMP/app.zip" "$TMP/x"
+curl -fL# --retry 8 --retry-delay 2 --retry-all-errors -C - -o "$ZIP" "$URL"
+TMP=$(mktemp -d); trap 'rm -rf "$TMP"' EXIT
+ditto -x -k "$ZIP" "$TMP/x"
 APP=$(find "$TMP/x" -maxdepth 2 -name '*.app' | head -1)
 [ -n "$APP" ] || { echo "✗ no .app inside zip"; exit 1; }
 
