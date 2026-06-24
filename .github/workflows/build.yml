@@ -1,0 +1,79 @@
+name: build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        working-directory: desktop
+        run: npm ci
+
+      - name: Fetch engine (mac)
+        if: matrix.platform == 'mac'
+        working-directory: desktop
+        run: bash scripts/fetch-engine.sh mac
+
+      - name: Fetch engine (windows)
+        if: matrix.platform == 'win'
+        shell: pwsh
+        working-directory: desktop
+        run: |
+          $ver = if ($env:ZJU_VERSION) { $env:ZJU_VERSION } else { 'v1.1.1' }
+          $base = "https://github.com/Mythologyli/zju-connect/releases/download/$ver"
+          New-Item -ItemType Directory -Force -Path engine | Out-Null
+          Invoke-WebRequest "$base/zju-connect-windows-amd64.zip" -OutFile a.zip
+          Expand-Archive a.zip -DestinationPath tmp -Force
+          $bin = Get-ChildItem -Recurse tmp -Filter zju-connect.exe | Select-Object -First 1
+          Copy-Item $bin.FullName engine/zju-connect-windows-amd64.exe -Force
+
+      - name: Build (macOS dmg)
+        if: matrix.platform == 'mac'
+        working-directory: desktop
+        run: npm run dist:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'   # unsigned build (no Apple cert)
+
+      - name: Build (Windows exe)
+        if: matrix.platform == 'win'
+        working-directory: desktop
+        run: npm run dist:win
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: hkustgzconnect-${{ matrix.platform }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.exe
+          if-no-files-found: warn
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            desktop/release/*.dmg
+            desktop/release/*.exe

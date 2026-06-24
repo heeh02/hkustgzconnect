@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline';" />
+  <title>HKUST(GZ) Connect</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="titlebar"></div>
+  <main class="app">
+    <header class="brand">
+      <img id="logo" class="logo" src="../assets/logo.svg" alt="HKUST(GZ)"
+           onerror="this.style.display='none'" />
+      <h1 class="title">HKUST<span class="paren">(GZ)</span> Connect</h1>
+      <p class="subtitle">香港科技大学(广州) · 校园 VPN</p>
+    </header>
+
+    <section class="status" id="status">
+      <span class="dot" id="dot"></span>
+      <span class="status-text" id="statusText">未连接</span>
+      <span class="status-ip" id="statusIp"></span>
+    </section>
+
+    <section class="form">
+      <label class="field">
+        <span class="field-label">账号</span>
+        <input id="username" type="text" autocomplete="off" spellcheck="false"
+               placeholder="校园账号前缀(如 xxx000)" />
+      </label>
+      <label class="field">
+        <span class="field-label">密码</span>
+        <input id="password" type="password" autocomplete="off" placeholder="校园密码" />
+      </label>
+
+      <button class="link-toggle" id="advancedToggle" type="button">
+        高级设置 <span class="chev" id="chev">▾</span>
+      </button>
+      <div class="advanced" id="advanced" hidden>
+        <label class="field">
+          <span class="field-label">服务器</span>
+          <input id="server" type="text" autocomplete="off" spellcheck="false" />
+        </label>
+        <label class="field">
+          <span class="field-label">SOCKS 端口</span>
+          <input id="port" type="number" min="1025" max="65535" />
+        </label>
+      </div>
+    </section>
+
+    <button class="connect-btn" id="connectBtn" type="button">连接</button>
+    <p class="error" id="error"></p>
+
+    <!-- shown only when connected -->
+    <section class="proxy" id="proxy" hidden>
+      <div class="proxy-title">校园网站 / 浏览器</div>
+      <div class="proxy-row">
+        <span class="proxy-key">SOCKS</span>
+        <code class="proxy-val" id="socksVal">127.0.0.1:1080</code>
+        <button class="mini" data-copy="socks" type="button">复制</button>
+      </div>
+      <div class="proxy-row">
+        <span class="proxy-key">PAC</span>
+        <code class="proxy-val" id="pacVal">—</code>
+        <button class="mini" data-copy="pac" type="button">复制</button>
+      </div>
+      <button class="ghost-btn" id="openBrowser" type="button">用 Chrome 打开校园网站</button>
+      <p class="proxy-hint">PAC 只让校园站走隧道、其它直连。填进 Chrome/系统「自动代理配置」即可。</p>
+    </section>
+
+    <footer class="foot">
+      <a href="#" id="logLink">查看日志</a>
+      <span class="sep">·</span>
+      <span class="version" id="version">v0.2.0</span>
+    </footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
