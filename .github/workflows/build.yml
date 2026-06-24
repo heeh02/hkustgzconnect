@@ -49,30 +49,48 @@ jobs:
           $bin = Get-ChildItem -Recurse tmp -Filter zju-connect.exe | Select-Object -First 1
           Copy-Item $bin.FullName engine/zju-connect-windows-amd64.exe -Force
 
-      # If MAC_CSC_LINK secret is set -> real Developer ID signing + notarization
-      # (APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID). Otherwise the
-      # afterPack hook ad-hoc signs (no "damaged"; opens via right-click).
+      # Only export CSC_LINK when a cert secret actually exists — an EMPTY CSC_LINK
+      # makes electron-builder try (and fail) to read "" as a cert file.
+      - name: Configure macOS signing
+        if: matrix.platform == 'mac'
+        shell: bash
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          AID: ${{ secrets.APPLE_ID }}
+          APW: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          ATID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$MAC_CSC_LINK" ]; then
+            { echo "CSC_LINK=$MAC_CSC_LINK"; echo "CSC_KEY_PASSWORD=$MAC_CSC_KEY_PASSWORD";
+              echo "CSC_IDENTITY_AUTO_DISCOVERY=true";
+              echo "APPLE_ID=$AID"; echo "APPLE_APP_SPECIFIC_PASSWORD=$APW"; echo "APPLE_TEAM_ID=$ATID"; } >> "$GITHUB_ENV"
+            echo "macOS: Developer ID signing + notarization"
+          else
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "macOS: ad-hoc signing (no cert) — opens via right-click → Open"
+          fi
+
       - name: Build (macOS dmg)
         if: matrix.platform == 'mac'
         working-directory: desktop
         run: npm run dist:mac
-        env:
-          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' && 'true' || 'false' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      # If WIN_CSC_LINK secret is set -> Authenticode signing; else unsigned
-      # (SmartScreen "More info -> Run anyway").
+      - name: Configure Windows signing
+        if: matrix.platform == 'win'
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          if [ -n "$WIN_CSC_LINK" ]; then
+            { echo "CSC_LINK=$WIN_CSC_LINK"; echo "CSC_KEY_PASSWORD=$WIN_CSC_KEY_PASSWORD"; } >> "$GITHUB_ENV"
+          fi
+
       - name: Build (Windows exe)
         if: matrix.platform == 'win'
         working-directory: desktop
         run: npm run dist:win
-        env:
-          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
