@@ -1,6 +1,6 @@
 {
   "name": "hkustgzconnect",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "HKUST(GZ) campus SSL-VPN — native desktop client (engine: zju-connect)",
   "main": "main.js",
   "author": "heeh02",

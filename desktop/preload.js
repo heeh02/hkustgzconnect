@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('api', {
   save: (payload) => ipcRenderer.invoke('save', payload),
   connect: () => ipcRenderer.invoke('connect'),
   disconnect: () => ipcRenderer.invoke('disconnect'),
+  logout: () => ipcRenderer.invoke('logout'),
+  getLogs: () => ipcRenderer.invoke('get-logs'),
   openLog: () => ipcRenderer.invoke('open-log'),
   copy: (text) => ipcRenderer.invoke('copy', text),
   openCampusBrowser: () => ipcRenderer.invoke('open-campus-browser'),

@@ -17,7 +17,7 @@ const RUNCONF = path.join(DATA, 'runtime.toml');
 const LOG = path.join(DATA, 'engine.log');
 const CHROME_PROFILE = path.join(DATA, 'campus-chrome');
 
-const DEFAULTS = { server: 'remote.hkust-gz.edu.cn', port: 1080, username: '' };
+const DEFAULTS = { server: 'remote.hkust-gz.edu.cn', port: 1080, username: '', dnsMode: 'auto', customDns: '' };
 const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
 
 let win = null;
@@ -65,9 +65,12 @@ function enginePath() {
 // Resolve the gateway via reliable public DNS so a broken/asleep system resolver
 // (e.g. 114.114.114.114 going unreachable after lid-sleep) can't break connecting.
 // Returns an IP to use directly as server_address; falls back to the hostname.
-async function resolveHost(host) {
+async function resolveHost(host, s) {
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host;
-  for (const servers of [['223.5.5.5'], ['119.29.29.29'], ['180.76.76.76'], ['8.8.8.8']]) {
+  const sets = [];
+  if (s && s.dnsMode === 'manual' && s.customDns) sets.push([s.customDns]);
+  sets.push(['223.5.5.5'], ['119.29.29.29'], ['180.76.76.76'], ['8.8.8.8']);
+  for (const servers of sets) {
     try {
       const r = new dns.Resolver({ tries: 1, timeout: 3000 });
       r.setServers(servers);
@@ -81,6 +84,7 @@ async function resolveHost(host) {
 
 function writeRunConf(s, pw, serverAddr) {
   const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const secDns = (s.dnsMode === 'manual' && s.customDns) ? s.customDns : '223.5.5.5';
   fs.writeFileSync(RUNCONF, [
     'protocol = "easyconnect"',
     `server_address = "${esc(serverAddr || s.server)}"`,
@@ -92,7 +96,7 @@ function writeRunConf(s, pw, serverAddr) {
     'disable_zju_config = true',
     'disable_zju_dns = true',
     'skip_domain_resource = true',
-    'secondary_dns_server = "223.5.5.5"',
+    `secondary_dns_server = "${esc(secDns)}"`,
     '',
   ].join('\n'), { mode: 0o600 });
 }
@@ -109,7 +113,7 @@ async function connect() {
   if (!s.username || !pw) { state.lastError = '请先填写账号和密码'; emit(); return; }
   state.connecting = true; state.connected = false; state.lastError = null; state.clientIp = null;
   emit();
-  const serverAddr = await resolveHost(s.server);
+  const serverAddr = await resolveHost(s.server, s);
   writeRunConf(s, pw, serverAddr);
   try { fs.writeFileSync(LOG, ''); } catch {}
   const bin = enginePath();
@@ -179,18 +183,33 @@ function openCampusBrowser() {
 }
 
 // ---------- IPC ----------
-ipcMain.handle('get-state', () => ({ ...state, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl() }));
+ipcMain.handle('get-state', () => ({
+  ...state, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl(),
+  loggedIn: hasPassword() && !!loadSettings().username,
+}));
 ipcMain.handle('save', (_e, p) => {
+  const cur = loadSettings();
   saveSettings({
     server: (p && p.server) || DEFAULTS.server,
     port: Number(p && p.port) || 1080,
     username: (p && p.username) || '',
+    dnsMode: (p && p.dnsMode) || cur.dnsMode || 'auto',
+    customDns: (p && typeof p.customDns === 'string') ? p.customDns.trim() : (cur.customDns || ''),
   });
   if (p && typeof p.password === 'string' && p.password.length) savePassword(p.password);
   return { ok: true };
 });
 ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
 ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
+ipcMain.handle('logout', () => {
+  disconnect();
+  try { fs.unlinkSync(CRED); } catch {}
+  return { ok: true };
+});
+ipcMain.handle('get-logs', () => {
+  try { return fs.readFileSync(LOG, 'utf8').split('\n').slice(-300).join('\n'); }
+  catch { return ''; }
+});
 ipcMain.handle('open-log', () => shell.openPath(LOG));
 ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return { ok: true }; });
 ipcMain.handle('open-campus-browser', () => { openCampusBrowser(); return { ok: true }; });
@@ -204,8 +223,8 @@ ipcMain.handle('resize', (_e, h) => {
 // ---------- window ----------
 function createWindow() {
   win = new BrowserWindow({
-    width: 420,
-    height: 600,
+    width: 480,
+    height: 700,
     resizable: false,
     fullscreenable: false,
     maximizable: false,
