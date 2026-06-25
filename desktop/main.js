@@ -1,9 +1,10 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, safeStorage, shell, Menu, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
 const dns = require('dns');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
@@ -22,6 +23,9 @@ const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
 
 let win = null;
 let engine = null;
+let userDisconnected = false;
+let attempts = 0;
+const MAX_ATTEMPTS = 3;
 let state = { connected: false, connecting: false, clientIp: null, lastError: null, pacUrl: '' };
 
 // ---------- settings & credentials ----------
@@ -30,21 +34,34 @@ function loadSettings() {
   catch { return { ...DEFAULTS }; }
 }
 function saveSettings(s) { fs.writeFileSync(SETTINGS, JSON.stringify(s, null, 2), { mode: 0o600 }); }
+// Local AES-256-GCM at-rest encryption with a per-install random key (0600 file).
+// Deliberately NOT macOS Keychain/safeStorage: an ad-hoc-signed app's signature
+// changes every build, so the Keychain treats each build as a new app and prompts
+// for access on every launch. File-based keeps it promptless; both files are 0600.
+const KEYFILE = path.join(DATA, 'key.bin');
+function getKey() {
+  try { const k = fs.readFileSync(KEYFILE); if (k.length === 32) return k; } catch {}
+  const k = crypto.randomBytes(32);
+  fs.writeFileSync(KEYFILE, k, { mode: 0o600 });
+  return k;
+}
 function savePassword(pw) {
   if (!pw) return;
-  const buf = safeStorage.isEncryptionAvailable()
-    ? safeStorage.encryptString(pw)
-    : Buffer.concat([Buffer.from('PLAIN:'), Buffer.from(pw, 'utf8')]);
-  fs.writeFileSync(CRED, buf, { mode: 0o600 });
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', getKey(), iv);
+  const enc = Buffer.concat([c.update(String(pw), 'utf8'), c.final()]);
+  fs.writeFileSync(CRED, Buffer.concat([iv, c.getAuthTag(), enc]), { mode: 0o600 });
 }
 function loadPassword() {
   try {
     const buf = fs.readFileSync(CRED);
-    if (buf.slice(0, 6).toString() === 'PLAIN:') return buf.slice(6).toString('utf8');
-    return safeStorage.decryptString(buf);
-  } catch { return ''; }
+    const iv = buf.subarray(0, 12), tag = buf.subarray(12, 28), enc = buf.subarray(28);
+    const d = crypto.createDecipheriv('aes-256-gcm', getKey(), iv);
+    d.setAuthTag(tag);
+    return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+  } catch { return ''; }  // old safeStorage cred won't decrypt -> user re-logs in once
 }
-function hasPassword() { return fs.existsSync(CRED); }
+function hasPassword() { return !!loadPassword(); }  // true only if it actually decrypts
 function socksPort() { return Number(loadSettings().port) || 1080; }
 
 // ---------- engine ----------
@@ -106,14 +123,16 @@ function emit() {
   if (win && !win.isDestroyed()) win.webContents.send('status', state);
 }
 
-async function connect() {
+async function connect(isRetry) {
   if (engine) return;
+  if (!isRetry) { attempts = 0; userDisconnected = false; }
   const s = loadSettings();
   const pw = loadPassword();
-  if (!s.username || !pw) { state.lastError = '请先填写账号和密码'; emit(); return; }
+  if (!s.username || !pw) { state.connecting = false; state.lastError = '请先填写账号和密码'; emit(); return; }
   state.connecting = true; state.connected = false; state.lastError = null; state.clientIp = null;
   emit();
   const serverAddr = await resolveHost(s.server, s);
+  if (userDisconnected) { state.connecting = false; emit(); return; }
   writeRunConf(s, pw, serverAddr);
   try { fs.writeFileSync(LOG, ''); } catch {}
   const bin = enginePath();
@@ -123,12 +142,12 @@ async function connect() {
   const onData = (d) => {
     const t = d.toString();
     try { fs.appendFileSync(LOG, t); } catch {}
-    if (/SOCKS5 server listening/.test(t)) { state.connecting = false; state.connected = true; emit(); }
+    if (/SOCKS5 server listening/.test(t)) { state.connecting = false; state.connected = true; attempts = 0; emit(); }
     const m = t.match(/Client IP:\s*([0-9.]+)/);
     if (m) { state.clientIp = m[1]; emit(); }
     if (/Login failed|Invalid username/.test(t)) state.lastError = '登录失败:账号或密码错误';
     else if (/Not implemented auth/.test(t)) state.lastError = '网关鉴权方式不受支持(可能已改 SSO/MFA)';
-    else if (/address already in use|bind:/.test(t)) state.lastError = `端口 ${s.port} 被占用,请在高级设置换一个`;
+    else if (/address already in use|bind:/.test(t)) state.lastError = `端口 ${s.port} 被占用,请在控制塔换一个`;
   };
   engine.stdout.on('data', onData);
   engine.stderr.on('data', onData);
@@ -136,13 +155,22 @@ async function connect() {
   engine.on('exit', (code) => {
     const wasConnected = state.connected;
     engine = null;
-    state.connected = false; state.connecting = false; state.clientIp = null;
-    if (!wasConnected && !state.lastError && code) state.lastError = '连接失败(退出码 ' + code + '),请查看日志';
+    state.connected = false; state.clientIp = null;
     try { fs.unlinkSync(RUNCONF); } catch {}
+    const authErr = /账号或密码|鉴权/.test(state.lastError || '');
+    // transient failure during setup (e.g. engine EOF panic) → auto-retry
+    if (!wasConnected && !userDisconnected && !authErr && attempts < MAX_ATTEMPTS) {
+      attempts++;
+      state.connecting = true; state.lastError = null; emit();
+      setTimeout(() => connect(true), 1500);
+      return;
+    }
+    state.connecting = false;
+    if (!wasConnected && !state.lastError && code) state.lastError = '连接失败,请重试或查看日志';
     emit();
   });
 }
-function disconnect() { if (engine) engine.kill(); }
+function disconnect() { userDisconnected = true; if (engine) engine.kill(); }
 
 // ---------- PAC server (campus -> SOCKS, everything else direct) ----------
 let pacServer = null, pacPort = 0;
