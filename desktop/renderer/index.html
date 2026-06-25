@@ -31,17 +31,21 @@
       <div class="side-group">
         <button class="nav active" data-page="connect" title="连接">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v5c0 4.6-3.1 7.7-7 9-3.9-1.3-7-4.4-7-9V6l7-3z"/><path d="M9 11.5a4 4 0 0 1 6 0M11 13.6a1.6 1.6 0 0 1 2 0"/></svg>
+          <span class="nav-label">连接</span>
         </button>
         <button class="nav" data-page="tower" title="控制塔">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="8" cy="8" r="2.2"/><line x1="3" y1="8" x2="5.8" y2="8"/><line x1="10.2" y1="8" x2="21" y2="8"/><circle cx="16" cy="16" r="2.2"/><line x1="3" y1="16" x2="13.8" y2="16"/><line x1="18.2" y1="16" x2="21" y2="16"/></svg>
+          <span class="nav-label">控制塔</span>
         </button>
       </div>
       <div class="side-group bottom">
         <button class="nav" data-page="notif" title="通知 / 日志">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+          <span class="nav-label">通知</span>
         </button>
         <button class="nav" data-page="settings" title="设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 14a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.3a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 2.8 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 8 2.6h.1A1.6 1.6 0 0 0 9 1a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 16 2.7a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V7a1.6 1.6 0 0 0 1.6 1H23a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
+          <span class="nav-label">设置</span>
         </button>
       </div>
     </aside>
@@ -49,40 +53,84 @@
     <main class="content">
       <!-- CONNECT -->
       <section class="page active" data-page="connect">
-        <div class="conn-loc" id="connLoc">香港科技大学(广州)</div>
-        <div class="conn-ip"><span class="lock" id="lock">🔓</span> IP：<span id="connIp">—</span></div>
-        <div class="conn-status" id="connStatus">未连接</div>
-        <button class="switch" id="switch" aria-label="连接开关"><span class="knob"></span></button>
-        <div class="loc-card">
-          <div class="loc-card-label">校园网关</div>
-          <div class="loc-card-main">
-            <span class="loc-flag">🏫</span>
-            <div class="loc-card-text">
-              <div class="loc-card-name" id="gwName">remote.hkust-gz.edu.cn</div>
-              <div class="loc-card-sub">广州 · HKUST(GZ) 校园网</div>
+        <div class="conn-top" id="connTop">
+          <div class="conn-loc">香港科技大学(广州)</div>
+          <div class="conn-ip">IP <span id="connIp">—</span></div>
+        </div>
+        <div class="conn-hero">
+          <button class="power" id="power" aria-label="连接开关">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="3.5" x2="12" y2="11"/><path d="M7.2 6.6a7 7 0 1 0 9.6 0"/></svg>
+          </button>
+          <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
+          <p class="conn-err" id="connErr"></p>
+        </div>
+        <div class="conn-bottom">
+          <div class="stat-grid" id="statGrid" hidden>
+            <div class="stat"><div class="k">时长</div><div class="v" id="stDur">0:00</div></div>
+            <div class="stat"><div class="k">网关延迟</div><div class="v" id="stPing">—</div></div>
+            <div class="stat"><div class="k">活动连接</div><div class="v" id="stConn">0</div></div>
+            <div class="stat"><div class="k">校内 IP</div><div class="v ip" id="stIp">—</div></div>
+          </div>
+          <div class="card apps-card" id="appsCard" hidden>
+            <div class="card-title">正在使用隧道的程序</div>
+            <div id="appList" class="app-list"></div>
+          </div>
+          <div class="loc-card">
+            <div class="loc-card-label">校园网关</div>
+            <div class="loc-card-main">
+              <span class="loc-flag">🏫</span>
+              <div class="loc-card-text">
+                <div class="loc-card-name" id="gwName">remote.hkust-gz.edu.cn</div>
+                <div class="loc-card-sub">广州 · HKUST(GZ) 校园网</div>
+              </div>
             </div>
           </div>
         </div>
-        <p class="conn-err" id="connErr"></p>
       </section>
 
       <!-- CONTROL TOWER -->
       <section class="page" data-page="tower" hidden>
         <h2 class="page-h">控制塔</h2>
+
+        <div class="card">
+          <div class="card-title">连接与端口</div>
+          <div class="frow"><span class="fk">本地 SOCKS 端口</span><input id="towerPort" class="inp sm" type="number" min="1025" max="65534" /></div>
+          <div class="frow"><span class="fk">HTTP 代理</span><code class="code" id="httpPort">—</code><button class="mini" data-copy="http">复制</button></div>
+          <label class="sw"><span>自动重连</span><input type="checkbox" id="autoReconnect" /></label>
+          <div class="frow"><span class="fk">重试次数</span><input id="maxAttempts" class="inp sm" type="number" min="0" max="10" /></div>
+          <label class="sw"><span>开机自启</span><input type="checkbox" id="startAtLogin" /></label>
+        </div>
+
         <div class="card">
           <div class="card-title">DNS 服务器</div>
           <label class="radio"><input type="radio" name="dns" value="auto" /> <span>自动</span><em>可靠公共 DNS,推荐</em></label>
-          <label class="radio"><input type="radio" name="dns" value="manual" /> <span>手动指定</span><em>自己提供 DNS 地址</em></label>
+          <label class="radio"><input type="radio" name="dns" value="manual" /> <span>手动指定</span><em>自己提供 DNS</em></label>
           <input id="customDns" class="inp" placeholder="如 223.5.5.5" disabled />
-          <p class="hint">睡醒/换网后连不上,多是系统 DNS 失效;这里走可靠 DNS 预解析网关、绕开它。</p>
+          <p class="hint">睡醒/换网后连不上,多是系统 DNS 失效;走可靠 DNS 预解析网关、绕开它。</p>
         </div>
+
         <div class="card">
-          <div class="card-title">本地 SOCKS 端口</div>
-          <input id="towerPort" class="inp" type="number" min="1025" max="65535" />
-          <p class="hint">浏览器 / SSH 经此端口走校园隧道(默认 1080)。</p>
+          <div class="card-title">路由 / 分流</div>
+          <div class="fk">强制走代理的域名</div>
+          <input id="customProxyDomain" class="inp" placeholder="science.org,nature.com(逗号分隔)" />
+          <label class="sw" style="margin-top:8px"><span>全局代理(所有流量走隧道)</span><input type="checkbox" id="proxyAll" /></label>
+          <p class="hint">校内/HPC(10.120.x)默认已走隧道;这里可加期刊/图书馆域名。全局代理一般不需要。</p>
         </div>
+
+        <div class="card">
+          <div class="card-title">保活与工具</div>
+          <label class="sw"><span>保持连接(防空闲断开)</span><input type="checkbox" id="keepAlive" /></label>
+          <div class="tools">
+            <button class="mini" data-copy="pac">复制 PAC 地址</button>
+            <button class="mini" data-copy="ssh">复制 SSH 命令</button>
+            <button class="mini" id="openBrowser">校园浏览器</button>
+            <button class="mini" id="openLog2">打开日志</button>
+          </div>
+        </div>
+
         <div class="row">
           <button id="towerSave" class="primary sm">保存</button>
+          <button id="towerReconnect" class="ghost sm">保存并重连</button>
           <span id="towerSaved" class="saved-tip"></span>
         </div>
       </section>
@@ -104,7 +152,7 @@
           <p class="hint">一般不用改;默认 remote.hkust-gz.edu.cn。</p>
         </div>
         <button id="logoutBtn" class="danger">退出登录 / 切换账号</button>
-        <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">v0.2.5</span></div>
+        <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">v0.3.0</span></div>
       </section>
     </main>
   </div>

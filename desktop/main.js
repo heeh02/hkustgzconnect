@@ -18,7 +18,10 @@ const RUNCONF = path.join(DATA, 'runtime.toml');
 const LOG = path.join(DATA, 'engine.log');
 const CHROME_PROFILE = path.join(DATA, 'campus-chrome');
 
-const DEFAULTS = { server: 'remote.hkust-gz.edu.cn', port: 1080, username: '', dnsMode: 'auto', customDns: '' };
+const DEFAULTS = {
+  server: 'remote.hkust-gz.edu.cn', port: 1080, username: '', dnsMode: 'auto', customDns: '',
+  autoReconnect: true, maxAttempts: 3, keepAlive: true, proxyAll: false, customProxyDomain: '', startAtLogin: false,
+};
 const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
 
 let win = null;
@@ -26,6 +29,11 @@ let engine = null;
 let userDisconnected = false;
 let attempts = 0;
 const MAX_ATTEMPTS = 3;
+let connectedAt = null;
+let gatewayIp = null;
+let telemetryTimer = null;
+let teleBusy = false;
+let lastTele = { connCount: 0, apps: [], latencyMs: null };
 let state = { connected: false, connecting: false, clientIp: null, lastError: null, pacUrl: '' };
 
 // ---------- settings & credentials ----------
@@ -102,7 +110,7 @@ async function resolveHost(host, s) {
 function writeRunConf(s, pw, serverAddr) {
   const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   const secDns = (s.dnsMode === 'manual' && s.customDns) ? s.customDns : '223.5.5.5';
-  fs.writeFileSync(RUNCONF, [
+  const lines = [
     'protocol = "easyconnect"',
     `server_address = "${esc(serverAddr || s.server)}"`,
     'server_port = 443',
@@ -114,8 +122,13 @@ function writeRunConf(s, pw, serverAddr) {
     'disable_zju_dns = true',
     'skip_domain_resource = true',
     `secondary_dns_server = "${esc(secDns)}"`,
-    '',
-  ].join('\n'), { mode: 0o600 });
+  ];
+  if (s.customProxyDomain && String(s.customProxyDomain).trim())
+    lines.push(`custom_proxy_domain = "${esc(String(s.customProxyDomain).trim())}"`);
+  if (s.proxyAll) lines.push('proxy_all = true');
+  if (s.keepAlive === false) lines.push('disable_keep_alive = true');
+  lines.push('');
+  fs.writeFileSync(RUNCONF, lines.join('\n'), { mode: 0o600 });
 }
 
 function emit() {
@@ -132,6 +145,7 @@ async function connect(isRetry) {
   state.connecting = true; state.connected = false; state.lastError = null; state.clientIp = null;
   emit();
   const serverAddr = await resolveHost(s.server, s);
+  gatewayIp = serverAddr;
   if (userDisconnected) { state.connecting = false; emit(); return; }
   writeRunConf(s, pw, serverAddr);
   try { fs.writeFileSync(LOG, ''); } catch {}
@@ -142,7 +156,7 @@ async function connect(isRetry) {
   const onData = (d) => {
     const t = d.toString();
     try { fs.appendFileSync(LOG, t); } catch {}
-    if (/SOCKS5 server listening/.test(t)) { state.connecting = false; state.connected = true; attempts = 0; emit(); }
+    if (/SOCKS5 server listening/.test(t)) { state.connecting = false; state.connected = true; attempts = 0; connectedAt = Date.now(); startTelemetry(); emit(); }
     const m = t.match(/Client IP:\s*([0-9.]+)/);
     if (m) { state.clientIp = m[1]; emit(); }
     if (/Login failed|Invalid username/.test(t)) state.lastError = '登录失败:账号或密码错误';
@@ -155,11 +169,14 @@ async function connect(isRetry) {
   engine.on('exit', (code) => {
     const wasConnected = state.connected;
     engine = null;
-    state.connected = false; state.clientIp = null;
+    state.connected = false; state.clientIp = null; connectedAt = null;
+    stopTelemetry();
     try { fs.unlinkSync(RUNCONF); } catch {}
     const authErr = /账号或密码|鉴权/.test(state.lastError || '');
+    const cfg = loadSettings();
+    const maxA = cfg.autoReconnect === false ? 0 : (Number.isInteger(cfg.maxAttempts) ? cfg.maxAttempts : MAX_ATTEMPTS);
     // transient failure during setup (e.g. engine EOF panic) → auto-retry
-    if (!wasConnected && !userDisconnected && !authErr && attempts < MAX_ATTEMPTS) {
+    if (!wasConnected && !userDisconnected && !authErr && attempts < maxA) {
       attempts++;
       state.connecting = true; state.lastError = null; emit();
       setTimeout(() => connect(true), 1500);
@@ -170,7 +187,100 @@ async function connect(isRetry) {
     emit();
   });
 }
-function disconnect() { userDisconnected = true; if (engine) engine.kill(); }
+function disconnect() { userDisconnected = true; connectedAt = null; stopTelemetry(); if (engine) engine.kill(); }
+
+// ---------- telemetry: latency + which apps use the SOCKS tunnel ----------
+const net = require('net');
+function run(cmd, args, timeout) {
+  return new Promise((resolve) => {
+    require('child_process').execFile(cmd, args, { timeout, windowsHide: true }, (e, so) => resolve(so || ''));
+  });
+}
+function tcpPing(host, port) {
+  return new Promise((resolve) => {
+    if (!host) return resolve(null);
+    const t0 = process.hrtime.bigint();
+    const sock = net.connect({ host, port });
+    const done = (ok) => { try { sock.destroy(); } catch {} resolve(ok ? Number(process.hrtime.bigint() - t0) / 1e6 : null); };
+    sock.setTimeout(3000);
+    sock.once('connect', () => done(true));
+    sock.once('timeout', () => done(false));
+    sock.once('error', () => done(false));
+  });
+}
+function friendly(n) {
+  if (/Chrome|chrome/.test(n)) return 'Google Chrome';
+  if (/Code Helper|Electron/.test(n)) return 'VS Code';
+  if (/Microsoft Edge|msedge/.test(n)) return 'Microsoft Edge';
+  if (/Lark|Feishu|飞书/.test(n)) return 'Lark/飞书';
+  if (/firefox/i.test(n)) return 'Firefox';
+  if (n === 'ssh' || n === 'sshd') return 'SSH';
+  if (/^(curl|wget|nc|python|node)$/.test(n)) return n;
+  return n;
+}
+const isValidPort = (p) => Number.isInteger(p) && p >= 1025 && p <= 65534;
+async function listTunnelApps(P, enginePid, appPid) {
+  if (!isValidPort(P)) return { connCount: 0, apps: [] };
+  const ports = new Set([P, P + 1]); // SOCKS + HTTP
+  try {
+    if (process.platform === 'win32') {
+      const ps = `$r=Get-NetTCPConnection -State Established -RemoteAddress 127.0.0.1 -EA SilentlyContinue|?{$_.RemotePort -eq ${P} -or $_.RemotePort -eq ${P + 1}}|Group-Object OwningProcess|%{$p=Get-Process -Id $_.Name -EA SilentlyContinue;[pscustomobject]@{Pid=[int]$_.Name;Name=$p.ProcessName;Count=$_.Count}};$r|ConvertTo-Json -Compress`;
+      const out = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], 4000);
+      let arr = []; try { const j = JSON.parse(out); arr = Array.isArray(j) ? j : [j]; } catch {}
+      const apps = arr.filter((a) => a && a.Pid !== enginePid && a.Pid !== appPid)
+        .map((a) => ({ pid: a.Pid, name: friendly(a.Name || String(a.Pid)), count: a.Count }));
+      return { connCount: apps.reduce((s, a) => s + (a.count || 0), 0), apps };
+    }
+    const out = await run('lsof', ['-nP', '-iTCP@127.0.0.1', '-sTCP:ESTABLISHED', '-F', 'pcn'], 1500);
+    const tuples = new Map(); const cmd = new Map(); let pid = null;
+    for (const ln of out.split('\n')) {
+      const k = ln[0], v = ln.slice(1);
+      if (k === 'p') pid = Number(v);
+      else if (k === 'c') cmd.set(pid, v);
+      else if (k === 'n') {
+        const m = v.match(/->127\.0\.0\.1:(\d+)$/);
+        if (m && ports.has(Number(m[1])) && pid !== enginePid && pid !== appPid) tuples.set(v, pid);
+      }
+    }
+    const perPid = new Map();
+    for (const p of tuples.values()) perPid.set(p, (perPid.get(p) || 0) + 1);
+    const apps = [];
+    for (const [p, count] of perPid) {
+      let name = cmd.get(p) || String(p);
+      const full = (await run('ps', ['-p', String(p), '-o', 'comm='], 800)).trim();
+      if (full) name = full.split('/').pop();
+      apps.push({ pid: p, name: friendly(name), count });
+    }
+    apps.sort((a, b) => b.count - a.count);
+    return { connCount: tuples.size, apps };
+  } catch { return { connCount: 0, apps: [] }; }
+}
+function sendTelemetry() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send('telemetry', { connectedAt, ...lastTele });
+}
+function startTelemetry() {
+  stopTelemetry();
+  let tick = 0;
+  const pump = async () => {
+    if (teleBusy || !state.connected) return;
+    teleBusy = true;
+    try {
+      const r = await listTunnelApps(socksPort(), engine ? engine.pid : -1, process.pid);
+      lastTele.connCount = r.connCount; lastTele.apps = r.apps;
+      if (tick % 2 === 0) lastTele.latencyMs = await tcpPing(gatewayIp, 443);
+      tick++;
+      sendTelemetry();
+    } finally { teleBusy = false; }
+  };
+  pump();
+  telemetryTimer = setInterval(pump, 2500);
+}
+function stopTelemetry() {
+  if (telemetryTimer) clearInterval(telemetryTimer);
+  telemetryTimer = null;
+  lastTele = { connCount: 0, apps: [], latencyMs: null };
+}
 
 // ---------- PAC server (campus -> SOCKS, everything else direct) ----------
 let pacServer = null, pacPort = 0;
@@ -212,23 +322,28 @@ function openCampusBrowser() {
 
 // ---------- IPC ----------
 ipcMain.handle('get-state', () => ({
-  ...state, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl(),
-  loggedIn: hasPassword() && !!loadSettings().username,
+  ...state, connectedAt, settings: loadSettings(), hasPassword: hasPassword(), pacUrl: pacUrl(),
+  loggedIn: hasPassword() && !!loadSettings().username, platform: process.platform,
 }));
 ipcMain.handle('save', (_e, p) => {
-  const cur = loadSettings();
-  saveSettings({
-    server: (p && p.server) || DEFAULTS.server,
-    port: Number(p && p.port) || 1080,
-    username: (p && p.username) || '',
-    dnsMode: (p && p.dnsMode) || cur.dnsMode || 'auto',
-    customDns: (p && typeof p.customDns === 'string') ? p.customDns.trim() : (cur.customDns || ''),
-  });
+  const next = { ...loadSettings() };
+  if (p && p.username != null) next.username = String(p.username);
+  if (p && p.server) next.server = String(p.server).trim();
+  if (p && p.port != null) { const n = Number(p.port); if (isValidPort(n)) next.port = n; }
+  if (p && p.dnsMode) next.dnsMode = p.dnsMode;
+  if (p && typeof p.customDns === 'string') next.customDns = p.customDns.trim();
+  if (p && typeof p.customProxyDomain === 'string') next.customProxyDomain = p.customProxyDomain.trim();
+  if (p && p.maxAttempts != null) next.maxAttempts = Math.max(0, Math.min(10, Number(p.maxAttempts) || 0));
+  for (const b of ['autoReconnect', 'keepAlive', 'proxyAll', 'startAtLogin']) if (p && typeof p[b] === 'boolean') next[b] = p[b];
+  saveSettings(next);
   if (p && typeof p.password === 'string' && p.password.length) savePassword(p.password);
+  if (p && typeof p.startAtLogin === 'boolean') { try { app.setLoginItemSettings({ openAtLogin: p.startAtLogin }); } catch {} }
   return { ok: true };
 });
 ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
 ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
+ipcMain.handle('reconnect', async () => { disconnect(); setTimeout(() => connect(), 800); return { ok: true }; });
+ipcMain.handle('ssh-config', () => `ProxyCommand /usr/bin/nc -X 5 -x 127.0.0.1:${socksPort()} %h %p`);
 ipcMain.handle('logout', () => {
   disconnect();
   try { fs.unlinkSync(CRED); } catch {}
