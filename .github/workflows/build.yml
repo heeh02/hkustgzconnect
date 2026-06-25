@@ -71,12 +71,18 @@ jobs:
             echo "macOS: ad-hoc signing (no cert) — opens via right-click → Open"
           fi
 
-      # zip only (no hdiutil) — reliably covers both arm64 + x64. dmg is flaky on
-      # CI runners; build it locally with `npm run dist:mac` if you want one.
-      - name: Build (macOS zip)
+      # zip (reliable, no hdiutil) is the guaranteed artifact; dmg is best-effort
+      # because hdiutil detach flakes on CI runners — retried, never fails the build.
+      - name: Build (macOS zip + dmg)
         if: matrix.platform == 'mac'
         working-directory: desktop
-        run: npx electron-builder --mac zip --arm64 --x64
+        run: |
+          sudo mdutil -a -i off >/dev/null 2>&1 || true   # fewer hdiutil "busy" flakes
+          npx electron-builder --mac zip --arm64 --x64
+          for i in 1 2 3; do
+            npx electron-builder --mac dmg --arm64 --x64 && break || { echo "dmg attempt $i failed, retrying"; sleep 8; }
+          done
+          ls release/*.dmg >/dev/null 2>&1 && echo "dmg built" || echo "::warning::dmg unavailable (CI hdiutil flake); zip shipped"
 
       - name: Configure Windows signing
         if: matrix.platform == 'win'

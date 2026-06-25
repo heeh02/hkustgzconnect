@@ -13,4 +13,4 @@ http_bind            = "127.0.0.1:1081"
 disable_zju_config   = true
 disable_zju_dns      = true
 skip_domain_resource = true
-secondary_dns_server = "114.114.114.114"
+secondary_dns_server = "223.5.5.5"

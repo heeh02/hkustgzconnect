@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, safeStorage, shell, Menu, clipboard } = req
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const dns = require('dns');
 const { spawn } = require('child_process');
 
 // ---------- single instance (avoid the app fighting its own session) ----------
@@ -61,11 +62,28 @@ function enginePath() {
   return candidates.find((p) => fs.existsSync(p)) || candidates[0];
 }
 
-function writeRunConf(s, pw) {
+// Resolve the gateway via reliable public DNS so a broken/asleep system resolver
+// (e.g. 114.114.114.114 going unreachable after lid-sleep) can't break connecting.
+// Returns an IP to use directly as server_address; falls back to the hostname.
+async function resolveHost(host) {
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host;
+  for (const servers of [['223.5.5.5'], ['119.29.29.29'], ['180.76.76.76'], ['8.8.8.8']]) {
+    try {
+      const r = new dns.Resolver({ tries: 1, timeout: 3000 });
+      r.setServers(servers);
+      const ips = await new Promise((res, rej) => r.resolve4(host, (e, a) => (e ? rej(e) : res(a))));
+      if (ips && ips.length) return ips[0];
+    } catch {}
+  }
+  try { return (await dns.promises.lookup(host, { family: 4 })).address; } catch {}
+  return host;
+}
+
+function writeRunConf(s, pw, serverAddr) {
   const esc = (v) => String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   fs.writeFileSync(RUNCONF, [
     'protocol = "easyconnect"',
-    `server_address = "${esc(s.server)}"`,
+    `server_address = "${esc(serverAddr || s.server)}"`,
     'server_port = 443',
     `username = "${esc(s.username)}"`,
     `password = "${esc(pw)}"`,
@@ -74,7 +92,7 @@ function writeRunConf(s, pw) {
     'disable_zju_config = true',
     'disable_zju_dns = true',
     'skip_domain_resource = true',
-    'secondary_dns_server = "114.114.114.114"',
+    'secondary_dns_server = "223.5.5.5"',
     '',
   ].join('\n'), { mode: 0o600 });
 }
@@ -84,14 +102,15 @@ function emit() {
   if (win && !win.isDestroyed()) win.webContents.send('status', state);
 }
 
-function connect() {
+async function connect() {
   if (engine) return;
   const s = loadSettings();
   const pw = loadPassword();
   if (!s.username || !pw) { state.lastError = '请先填写账号和密码'; emit(); return; }
   state.connecting = true; state.connected = false; state.lastError = null; state.clientIp = null;
   emit();
-  writeRunConf(s, pw);
+  const serverAddr = await resolveHost(s.server);
+  writeRunConf(s, pw, serverAddr);
   try { fs.writeFileSync(LOG, ''); } catch {}
   const bin = enginePath();
   if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = '引擎缺失:' + bin; emit(); return; }
@@ -170,7 +189,7 @@ ipcMain.handle('save', (_e, p) => {
   if (p && typeof p.password === 'string' && p.password.length) savePassword(p.password);
   return { ok: true };
 });
-ipcMain.handle('connect', () => { connect(); return { ok: true }; });
+ipcMain.handle('connect', async () => { await connect(); return { ok: true }; });
 ipcMain.handle('disconnect', () => { disconnect(); return { ok: true }; });
 ipcMain.handle('open-log', () => shell.openPath(LOG));
 ipcMain.handle('copy', (_e, text) => { clipboard.writeText(String(text || '')); return { ok: true }; });
