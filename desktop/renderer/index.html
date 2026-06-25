@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div class="goldbar"></div>
   <div class="titlebar"></div>
 
   <!-- ============ LOGIN ============ -->
@@ -53,16 +54,14 @@
     <main class="content">
       <!-- CONNECT -->
       <section class="page active" data-page="connect">
-        <div class="conn-top" id="connTop">
+        <div class="hero-card" id="connTop">
           <div class="conn-loc">香港科技大学(广州)</div>
           <div class="conn-ip">IP <span id="connIp">—</span></div>
-        </div>
-        <div class="conn-hero">
           <button class="switch" id="power" aria-label="连接开关"><span class="knob"></span></button>
           <div class="conn-status"><span class="dot" id="dot"></span><span id="connStatus">未连接</span></div>
           <p class="conn-err" id="connErr"></p>
         </div>
-        <div class="conn-bottom">
+        <div class="conn-body">
           <div class="stat-grid" id="statGrid" hidden>
             <div class="stat"><div class="k">时长</div><div class="v" id="stDur">0:00</div></div>
             <div class="stat"><div class="k">网关延迟</div><div class="v" id="stPing">—</div></div>
@@ -150,7 +149,7 @@
           <p class="hint">一般不用改;默认 remote.hkust-gz.edu.cn。</p>
         </div>
         <button id="logoutBtn" class="danger">退出登录 / 切换账号</button>
-        <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">v0.3.1</span></div>
+        <div class="foot"><a id="openLogLink" href="#">打开完整日志</a><span class="sep">·</span><span id="ver">v0.3.2</span></div>
       </section>
     </main>
   </div>
