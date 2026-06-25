@@ -4,10 +4,16 @@
 
 # hkustgzconnect
 
-**香港科技大学(广州)校园 SSL-VPN 的原生客户端**
-Native client for the HKUST(GZ) campus SSL‑VPN (Sangfor EasyConnect)
+**香港科技大学(广州)校园 SSL-VPN 的跨平台原生客户端**
+Cross-platform native client for the HKUST(GZ) campus SSL‑VPN (Sangfor EasyConnect)
 
-零 Rosetta · 零 Docker · 纯原生 · 一键连接 · 直连校内 HPC
+**macOS**(Apple Silicon / Intel) · **Windows**(x64) · 纯原生 · 一键连接 · 直连校内 HPC
+零 Rosetta · 零 Docker · 不抢系统路由 · 与 Clash 等代理共存
+
+![macOS](https://img.shields.io/badge/macOS-Apple_Silicon_%7C_Intel-000?logo=apple&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-x64-0078D6?logo=windows&logoColor=white)
+![Engine](https://img.shields.io/badge/engine-zju--connect-44a)
+![License](https://img.shields.io/badge/License-GPL--3.0-blue)
 
 </div>
 
@@ -15,16 +21,17 @@ Native client for the HKUST(GZ) campus SSL‑VPN (Sangfor EasyConnect)
 
 ## 这是什么
 
-学校的 EasyConnect 官方客户端在 Apple Silicon 上要么靠 x86 模拟、要么会抢系统路由把别的代理/UDP 弄坏。
+学校的 EasyConnect 官方客户端又重又爱抢系统路由(把别的代理 / UDP 弄坏),在 Apple Silicon 上还得靠 x86 模拟。
 本项目用 [**zju-connect**](https://github.com/Mythologyli/zju-connect)(深信服 EasyConnect 协议的纯 Go 重实现)做引擎,
-封装成一个**简洁的桌面应用**和一个**命令行工具**:登录后起一个本地 SOCKS5,把校内/HPC 流量(`10.120.0.0/16`)
-经隧道送进去,**其它流量完全不受影响、系统路由表不被碰**。
+封装成一个**跨平台桌面应用(macOS + Windows)**和一个**命令行工具**:登录后起一个本地 SOCKS5,把校内/HPC 流量(`10.120.0.0/16`)
+经隧道送进去,**其它流量完全不受影响、系统路由表不被碰**。同一套界面、同一个引擎,在 macOS 与 Windows 上一致。
 
 实测网关 `remote.hkust-gz.edu.cn` 为深信服 **M7.6.8R2**,鉴权是**纯 用户名+密码**(无 SSO/验证码/短信/分组),
 所以原生客户端可直接登录。
 
 ## 功能
 
+- 🖥️ **跨平台** —— 同一套界面,**macOS**(Apple Silicon / Intel)与 **Windows**(x64)原生运行;Linux 可自行从源码构建
 - 🔐 **账号登录** —— 密码存系统安全区(macOS Keychain / Windows DPAPI),不落明文、不进 `ps`
 - 🔌 **一键连接开关**
 - 🎚️ **端口设置** —— SOCKS 端口可改(默认 `1080`)
@@ -76,7 +83,7 @@ Host hpc2 hpc3 *.hpc.hkust-gz.edu.cn 10.120.*
 
 ## 命令行版(CLI)
 
-仓库根目录的 [`hkustgzconnect`](hkustgzconnect) 是个零依赖的 macOS/Linux 控制脚本(引擎同一个):
+仓库根目录的 [`hkustgzconnect`](hkustgzconnect) 是个零依赖的 macOS / Linux 控制脚本(Windows 请用桌面版;引擎同一个):
 ```bash
 cp config.toml.example config.toml   # 填 username
 ./hkustgzconnect set-password         # 密码进 Keychain
