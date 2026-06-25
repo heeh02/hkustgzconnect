@@ -82,14 +82,14 @@ button, input, a, code { -webkit-app-region: no-drag; }
 .conn-loc { font-size: 17px; font-weight: 700; }
 .conn-ip { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; background: var(--panel); border-radius: 999px; padding: 4px 12px; font-size: 12.5px; color: var(--navy); font-variant-numeric: tabular-nums; }
 .conn-hero { margin: 30px 0 26px; display: flex; flex-direction: column; align-items: center; }
-.power { width: 128px; height: 128px; border-radius: 50%; border: none; cursor: pointer; display: grid; place-items: center; background: var(--field); box-shadow: inset 0 0 0 6px var(--line), 0 6px 16px rgba(11,42,91,.08); transition: box-shadow .25s, background .25s, transform .08s; }
-.power svg { width: 44px; height: 44px; stroke: var(--navy); transition: stroke .2s; }
-.power:hover { box-shadow: inset 0 0 0 6px #dbe2ec, 0 8px 20px rgba(11,42,91,.12); }
-.power:active { transform: scale(.97); }
-.power.on { background: linear-gradient(180deg, var(--gold-2), var(--gold)); box-shadow: 0 0 0 8px rgba(204,153,0,.12), 0 12px 30px rgba(204,153,0,.3); }
-.power.on svg { stroke: #3a2c00; }
-.power.busy { box-shadow: inset 0 0 0 6px var(--gold-2), 0 6px 16px rgba(204,153,0,.18); animation: pulse 1.1s ease-in-out infinite; }
-@keyframes pulse { 0%,100% { box-shadow: inset 0 0 0 6px var(--gold-2); } 50% { box-shadow: inset 0 0 0 6px #f0d480; } }
+.switch { width: 120px; height: 58px; border-radius: 999px; border: none; cursor: pointer; position: relative; padding: 0; background: #c4ccd8; box-shadow: inset 0 1px 4px rgba(0,0,0,.12); transition: background .25s; }
+.switch .knob { position: absolute; top: 6px; left: 6px; width: 46px; height: 46px; border-radius: 50%; background: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.25); transition: transform .25s, background .25s; }
+.switch.on { background: linear-gradient(180deg, var(--gold-2), var(--gold)); }
+.switch.on .knob { transform: translateX(62px); }
+.switch.busy { background: var(--gold-2); }
+.switch.busy .knob { animation: knobpulse 1s ease-in-out infinite; }
+@keyframes knobpulse { 0%, 100% { transform: translateX(31px); } 50% { transform: translateX(31px) scale(1.08); } }
+.switch:active .knob { box-shadow: 0 2px 6px rgba(0,0,0,.3); }
 .conn-status { margin-top: 16px; font-size: 20px; font-weight: 700; color: var(--muted); display: inline-flex; align-items: center; gap: 7px; }
 .conn-status.on { color: var(--ok); }
 .conn-status.busy { color: var(--gold); }
