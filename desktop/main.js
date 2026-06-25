@@ -133,7 +133,7 @@ function writeRunConf(s, pw, serverAddr) {
 
 function emit() {
   state.pacUrl = pacUrl();
-  if (win && !win.isDestroyed()) win.webContents.send('status', state);
+  if (win && !win.isDestroyed()) win.webContents.send('status', { ...state, connectedAt });
 }
 
 async function connect(isRetry) {
@@ -374,7 +374,7 @@ function createWindow() {
     title: 'HKUST(GZ) Connect',
     backgroundColor: '#ffffff',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 14, y: 16 },
+    trafficLightPosition: { x: 14, y: 12 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

@@ -27,7 +27,7 @@ function renderConnect(s) {
   wrap.classList.toggle('on', s.connected); wrap.classList.toggle('busy', s.connecting);
   $('connStatus').textContent = s.connecting ? '连接中…' : s.connected ? '已连接' : '未连接';
   $('connIp').textContent = s.connected && s.clientIp ? s.clientIp : '—';
-  $('connTop').classList.toggle('dim', !s.connected);
+  $('connTop').classList.toggle('connected', s.connected);
   $('connErr').textContent = (!s.connected && !s.connecting && s.lastError) ? s.lastError : '';
   $('statGrid').hidden = !s.connected;
   $('appsCard').hidden = !s.connected;
