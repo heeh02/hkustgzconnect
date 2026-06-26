@@ -136,6 +136,23 @@ function emit() {
   if (win && !win.isDestroyed()) win.webContents.send('status', { ...state, connectedAt });
 }
 
+// The gateway permits ONE session per account (Is_enable_mult_client=0). A second
+// zju-connect for the same account (the CLI/launchd autostart, or an orphan left by a
+// previous crash) kicks this one → the classic "无缘无故掉线". Kill any other engine
+// instance right before we start ours. Our own engine isn't spawned yet at call time.
+function killStrayEngines() {
+  try {
+    if (process.platform === 'win32')
+      // wildcard catches both zju-connect-windows-amd64.exe and the zju-connect.exe fallback
+      require('child_process').execFileSync('powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command',
+         "Get-Process -Name 'zju-connect*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"],
+        { stdio: 'ignore', timeout: 4000, windowsHide: true });
+    else
+      require('child_process').execFileSync('pkill', ['-f', 'zju-connect'], { stdio: 'ignore', timeout: 3000 });
+  } catch {}
+}
+
 async function connect(isRetry) {
   if (engine) return;
   if (!isRetry) { attempts = 0; userDisconnected = false; }
@@ -152,6 +169,7 @@ async function connect(isRetry) {
   const bin = enginePath();
   if (!fs.existsSync(bin)) { state.connecting = false; state.lastError = '引擎缺失:' + bin; emit(); return; }
 
+  killStrayEngines(); // gateway = one session per account; clear any other engine first
   engine = spawn(bin, ['-config', RUNCONF], { stdio: ['ignore', 'pipe', 'pipe'] });
   const onData = (d) => {
     const t = d.toString();
@@ -168,22 +186,35 @@ async function connect(isRetry) {
   engine.on('error', (err) => { state.connecting = false; state.lastError = '无法启动引擎:' + err.message; emit(); });
   engine.on('exit', (code) => {
     const wasConnected = state.connected;
+    const uptime = connectedAt ? (Date.now() - connectedAt) : 0;
     engine = null;
     state.connected = false; state.clientIp = null; connectedAt = null;
     stopTelemetry();
     try { fs.unlinkSync(RUNCONF); } catch {}
     const authErr = /账号或密码|鉴权/.test(state.lastError || '');
     const cfg = loadSettings();
-    const maxA = cfg.autoReconnect === false ? 0 : (Number.isInteger(cfg.maxAttempts) ? cfg.maxAttempts : MAX_ATTEMPTS);
-    // transient failure during setup (e.g. engine EOF panic) → auto-retry
-    if (!wasConnected && !userDisconnected && !authErr && attempts < maxA) {
+    const autoOn = cfg.autoReconnect !== false;
+    const maxA = Number.isInteger(cfg.maxAttempts) ? cfg.maxAttempts : MAX_ATTEMPTS;
+    // user-initiated stop or bad credentials → never auto-reconnect
+    if (userDisconnected || authErr) { state.connecting = false; emit(); return; }
+    // A session that stayed up a while and THEN dropped (gateway kick / engine gvisor
+    // panic / network blip / idle timeout) gets a FRESH retry budget so it always
+    // recovers — this is the fix for "无缘无故掉线". A connection that died almost
+    // immediately keeps counting against maxA so a hard failure can't hammer the gateway.
+    if (wasConnected && uptime > 20000) attempts = 0;
+    if (autoOn && attempts < maxA) {
       attempts++;
-      state.connecting = true; state.lastError = null; emit();
-      setTimeout(() => connect(true), 1500);
+      const delay = Math.min(2000 * attempts, 15000); // linear backoff, capped at 15s
+      state.connecting = true;
+      state.lastError = wasConnected ? '连接中断,正在自动重连…' : null;
+      emit();
+      setTimeout(() => connect(true), delay);
       return;
     }
     state.connecting = false;
-    if (!wasConnected && !state.lastError && code) state.lastError = '连接失败,请重试或查看日志';
+    if (!state.lastError) state.lastError = wasConnected
+      ? '连接已断开,自动重连多次失败,请手动重连或查看日志'
+      : (code ? '连接失败,请重试或查看日志' : null);
     emit();
   });
 }
