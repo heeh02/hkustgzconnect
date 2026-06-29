@@ -21,6 +21,7 @@ const CHROME_PROFILE = path.join(DATA, 'campus-chrome');
 const DEFAULTS = {
   server: 'remote.hkust-gz.edu.cn', port: 1080, username: '', dnsMode: 'auto', customDns: '',
   autoReconnect: true, maxAttempts: 3, keepAlive: true, proxyAll: false, customProxyDomain: '', startAtLogin: false,
+  keepAliveUrl: 'http://hpc3login.hpc.hkust-gz.edu.cn/',
 };
 const CAMPUS_HOME = 'https://www.hkust-gz.edu.cn';
 
@@ -126,7 +127,18 @@ function writeRunConf(s, pw, serverAddr) {
   if (s.customProxyDomain && String(s.customProxyDomain).trim())
     lines.push(`custom_proxy_domain = "${esc(String(s.customProxyDomain).trim())}"`);
   if (s.proxyAll) lines.push('proxy_all = true');
-  if (s.keepAlive === false) lines.push('disable_keep_alive = true');
+  // Keep-alive: zju-connect SILENTLY disables keep-alive when disable_zju_dns=true
+  // AND no keep_alive_url is provided (engine.log: "Keep alive is disabled because
+  // remote DNS is disabled, and no KeepAliveURL is provided"). The session then
+  // idle-drops, so a later hpc3/hpc2 connect fails until a manual reconnect. Provide
+  // a campus-internal URL (reachable through the tunnel) to keep the session warm.
+  // The explicit keepAlive=false toggle still wins.
+  if (s.keepAlive === false) {
+    lines.push('disable_keep_alive = true');
+  } else {
+    const kaUrl = (typeof s.keepAliveUrl === 'string' && s.keepAliveUrl.trim()) || DEFAULTS.keepAliveUrl;
+    if (kaUrl) lines.push(`keep_alive_url = "${esc(kaUrl)}"`);
+  }
   lines.push('');
   fs.writeFileSync(RUNCONF, lines.join('\n'), { mode: 0o600 });
 }
@@ -364,6 +376,7 @@ ipcMain.handle('save', (_e, p) => {
   if (p && p.dnsMode) next.dnsMode = p.dnsMode;
   if (p && typeof p.customDns === 'string') next.customDns = p.customDns.trim();
   if (p && typeof p.customProxyDomain === 'string') next.customProxyDomain = p.customProxyDomain.trim();
+  if (p && typeof p.keepAliveUrl === 'string') next.keepAliveUrl = p.keepAliveUrl.trim();
   if (p && p.maxAttempts != null) next.maxAttempts = Math.max(0, Math.min(10, Number(p.maxAttempts) || 0));
   for (const b of ['autoReconnect', 'keepAlive', 'proxyAll', 'startAtLogin']) if (p && typeof p[b] === 'boolean') next[b] = p[b];
   saveSettings(next);
